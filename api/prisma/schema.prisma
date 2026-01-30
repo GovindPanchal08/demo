@@ -1,0 +1,222 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum userStatus {
+  created
+  active
+  deactive
+}
+
+model User {
+  id             Int            @id @default(autoincrement())
+  name           String         @db.VarChar(100)
+  email          String         @unique @db.VarChar(320)
+  password       String?        @db.VarChar(255)
+  phone          String?        @db.VarChar(20)
+  department     String?        @db.VarChar(100)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(6)
+  isEnabled      Boolean        @default(true)
+  refreshTokens  String?
+  roleId         Int?           @db.SmallInt
+  status         userStatus     @default(created)
+  email_verified Boolean        @default(false)
+  group_id       Int?
+  guestRequests  GuestRequest[]
+  role           Role?          @relation(fields: [roleId], references: [id])
+  visitors       Visitor[]
+  visits_checked Visit[]        @relation("CheckedBy")
+  hostedVisits   Visit[]        @relation("HostedVisits")
+  visits         Visit[]
+
+  @@index([email])
+  @@index([isEnabled])
+  @@index([roleId])
+  @@map("users")
+}
+
+model PasswordReset {
+  id        Int      @id @default(autoincrement())
+  email     String   @db.VarChar(320)
+  token     String   @unique @db.VarChar(255)
+  expiresAt DateTime @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([email])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("password_resets")
+}
+
+model Visitor {
+  id             Int      @id @default(autoincrement())
+  uuid           String   @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String   @db.VarChar(100)
+  email          String   @unique @db.VarChar(320)
+  phone          String   @db.VarChar(20)
+  purpose        String   @db.VarChar(500)
+  user_id        Int      @default(1) @db.SmallInt
+  id_type        String?  @db.VarChar(50)
+  id_number      String?  @db.VarChar(50)
+  id_scan_s3     String?  @db.VarChar(500)
+  photo_s3       String?  @db.VarChar(500)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  face_embedding Json?
+  groupId        Int?
+  group          Group?   @relation(fields: [groupId], references: [id])
+  created_by     User     @relation(fields: [user_id], references: [id])
+  visits         Visit[]
+
+  @@index([uuid])
+  @@index([email])
+  @@index([phone])
+  @@index([user_id])
+  @@index([created_at])
+  @@map("visitors")
+}
+
+model Group {
+  id         Int       @id @default(autoincrement())
+  uuid       String    @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String    @db.VarChar(150)
+  lead_email String    @db.VarChar(320)
+  size       Int
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  visitors   Visitor[]
+
+  @@index([uuid])
+  @@index([lead_email])
+  @@map("groups")
+}
+
+model Visit {
+  id            Int       @id @default(autoincrement())
+  visitor_id    Int       @db.SmallInt
+  host_id       Int?      @db.SmallInt
+  assigned_to   Int?
+  time_from     DateTime? @db.Timestamptz(6)
+  time_to       DateTime? @db.Timestamptz(6)
+  checkin_time  DateTime? @db.Timestamptz(6)
+  checkout_time DateTime? @db.Timestamptz(6)
+  status        String    @default("pending") @db.VarChar(20)
+  preregistered Boolean   @default(true)
+  isApproved    Boolean   @default(false)
+  badge_id      Int?      @db.SmallInt
+  checked_by    Int?      @db.SmallInt
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+
+  badge       Badge?  @relation(fields: [badge_id], references: [id])
+  checkedUser User?   @relation("CheckedBy", fields: [checked_by], references: [id])
+  host        User?   @relation("HostedVisits", fields: [host_id], references: [id])
+  visitor     Visitor @relation(fields: [visitor_id], references: [id])
+
+  departments VisitDepartment[]
+  userId      Int?
+  user        User?             @relation(fields: [userId], references: [id])
+
+  @@index([status, created_at])
+  @@index([visitor_id, status])
+  @@map("visits")
+}
+
+model VisitDepartment {
+  id            Int @id @default(autoincrement())
+  visit_id      Int
+  department_id Int
+
+  visit      Visit      @relation(fields: [visit_id], references: [id], onDelete: Cascade)
+  department Department @relation(fields: [department_id], references: [id])
+
+  @@unique([visit_id, department_id])
+  @@index([visit_id])
+  @@index([department_id])
+  @@map("visit_departments")
+}
+
+model Badge {
+  id         Int       @id @default(autoincrement())
+  type       String    @db.VarChar(50)
+  qr_code    String    @unique @db.VarChar(255)
+  issued_at  DateTime  @default(now()) @db.Timestamptz(6)
+  expires_at DateTime? @db.Timestamptz(6)
+  visits     Visit[]
+
+  @@index([qr_code])
+  @@index([expires_at])
+  @@map("badges")
+}
+
+model Department {
+  id         Int               @id @default(autoincrement())
+  name       String            @unique @db.VarChar(100)
+  created_at DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at DateTime          @updatedAt @db.Timestamptz(6)
+  visits     VisitDepartment[]
+
+  @@index([name])
+  @@map("departments")
+}
+
+model GuestRequest {
+  id         Int      @id @default(autoincrement()) @db.SmallInt
+  host_id    Int      @db.SmallInt
+  message    String?
+  status     String   @default("pending") @db.VarChar(20)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @updatedAt @db.Timestamptz(6)
+  host       User     @relation(fields: [host_id], references: [id], onDelete: Cascade)
+
+  @@index([host_id])
+  @@index([status])
+  @@index([created_at])
+  @@map("guest_requests")
+}
+
+model Menu {
+  id        Int        @id @default(autoincrement())
+  title     String
+  slug      String
+  parentId  Int?
+  parent    Menu?      @relation("MenuTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Menu[]     @relation("MenuTree")
+  roleMenus RoleMenu[]
+
+  @@unique([parentId, slug])
+  @@index([parentId])
+  @@index([slug])
+  @@map("menus")
+}
+
+model Role {
+  id    Int       @id @default(autoincrement())
+  title String    @unique @db.VarChar(50)
+  type  roleType
+  menus RoleMenu?
+  users User[]
+
+  @@index([type])
+  @@map("roles")
+}
+
+model RoleMenu {
+  roleId  Int   @id
+  menuIds Int[]
+  menuId  Int?
+  menu    Menu? @relation(fields: [menuId], references: [id])
+  role    Role  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@index([roleId])
+  @@index([menuIds])
+  @@map("role_menus")
+}
+
+enum roleType {
+  admin
+  host
+  receptionist
+}

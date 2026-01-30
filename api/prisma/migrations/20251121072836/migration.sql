@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "User" ALTER COLUMN "refreshTokens" DROP NOT NULL,
+ALTER COLUMN "refreshTokens" DROP DEFAULT,
+ALTER COLUMN "refreshTokens" SET DATA TYPE TEXT;
